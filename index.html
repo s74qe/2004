@@ -20,7 +20,7 @@ body{
 .sq b{display:block;font-weight:normal}
 .body{padding:22px 20px 18px;text-align:center}
 .title{font-size:17px;font-weight:bold;padding-bottom:16px;border-bottom:3px solid var(--ink)}
-.btn{display:block;width:100%;margin:18px 0;padding:12px;font:bold 17px "Courier New",monospace;color:var(--pink);background:var(--ink);border:3px solid var(--ink);border-radius:6px;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.35)}
+.btn{touch-action:manipulation;display:block;width:100%;margin:18px 0;padding:12px;font:bold 17px "Courier New",monospace;color:var(--pink);background:var(--ink);border:3px solid var(--ink);border-radius:6px;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.35)}
 .btn:hover{background:var(--cream);color:var(--ink)}
 .btn:active{transform:translate(3px,3px);box-shadow:none}
 .rule{border-top:3px solid var(--ink);padding-top:18px}
@@ -75,10 +75,41 @@ CHARS.forEach(function(ch,idx){
   c.appendChild(s);grid.appendChild(c);
 });
 var stage=document.getElementById("stage");
-var AC;
+var AC,BUF=[];
+function initAudio(){try{
+  if(AC)return;
+  var C=window.AudioContext||window.webkitAudioContext;
+  try{AC=new C({latencyHint:0})}catch(e){AC=new C()}
+  var sr=AC.sampleRate;
+  [false,true].forEach(function(up){
+    var n=Math.floor(sr*0.13),b=AC.createBuffer(1,n,sr),d=b.getChannelData(0),ph=0;
+    for(var i=0;i<n;i++){
+      var t=i/sr,k=Math.min(t,0.09)/0.09,f=up?660*Math.pow(2,k):990*Math.pow(0.5,k);
+      ph+=2*Math.PI*f/sr;
+      var g=t<0.01?0.0001*Math.pow(1200,t/0.01):(t<0.12?0.12*Math.pow(0.0001/0.12,(t-0.01)/0.11):0.0001);
+      d[i]=(Math.sin(ph)>=0?1:-1)*g;
+    }
+    BUF[up?1:0]=b;
+  });
+  var ks=AC.createBufferSource();ks.buffer=AC.createBuffer(1,2,22050);ks.loop=true;ks.connect(AC.destination);ks.start(0);
+}catch(e){}}
+function unlock(){try{initAudio();if(AC&&AC.state!=="running")AC.resume();}catch(e){}}
+initAudio();
+["pointerdown","touchstart","touchmove","touchend","click"].forEach(function(ev){document.addEventListener(ev,unlock,{passive:true,capture:true})});
 function sfx(up){try{
-  AC=AC||new (window.AudioContext||window.webkitAudioContext)();
-  if(AC.state==="suspended")AC.resume();
+  unlock();
+  var s=AC.createBufferSource();s.buffer=BUF[up?1:0];s.connect(AC.destination);s.start(0);
+}catch(e){}}
+var stage=document.getElementById("stage");
+var AC;
+function unlock(){try{
+  if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
+    var ks=AC.createBufferSource();ks.buffer=AC.createBuffer(1,2,22050);ks.loop=true;ks.connect(AC.destination);ks.start(0);}
+  if(AC.state!=="running")AC.resume();
+}catch(e){}}
+["pointerdown","touchstart","touchmove","touchend","click"].forEach(function(ev){document.addEventListener(ev,unlock,{passive:true,capture:true})});
+function sfx(up){try{
+  unlock();
   var t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
   o.type="square";
   o.frequency.setValueAtTime(up?660:990,t);
@@ -99,8 +130,11 @@ function swap(openIt){
 }
 function openG(){swap(true)}
 function closeG(){swap(false)}
-document.getElementById("open").onclick=function(){sfx(true);openG()};
-document.getElementById("back").onclick=function(){sfx(false);closeG()};
+function wire(id,up,fn){var el=document.getElementById(id),played=false;
+  el.addEventListener("pointerdown",function(){sfx(up);played=true});
+  el.addEventListener("click",function(){if(!played)sfx(up);played=false;fn()});}
+wire("open",true,openG);
+wire("back",false,closeG);
 </script>
 </body>
 </html>
